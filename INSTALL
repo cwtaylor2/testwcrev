@@ -1,0 +1,34 @@
+There is no sophisticated installation procedure for this small utility.
+
+=========
+Building:
+=========
+
+For the impatient: the steps to build it are:
+
+1) Copy config_mk.template to config.mk and edit it (it is commented)
+2) Run "make"
+3) There should be an executable named "svnwcrev" in the root folder
+   now. Place it anywhere in your PATH.
+   
+=============
+Requirements:
+=============
+
+For obvious reasons you will need the headers of Subversion and APR,
+and their libraries to link the executable. I have tested this tool
+with Subversion 1.3.0, but it should work with all versions from
+1.0 on with almost all up-to-date distributions. The APR version has
+to be the one that comes with the Subversion sources.
+
+NOTE:
+Do not ask me about errors like
+  "undefined reference to `svn_utf_initialize'"
+or
+  "error: apr_pools.h: File or folder not found"
+
+because then you either did not edit config.mk properly or you do not
+have the Subversion/APR headers or libraries in place.
+
+Oliver Pajonk
+mailman@tigris.org

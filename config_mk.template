@@ -1,0 +1,3 @@
+SUBVERSION_INCLUDE=/usr/include/subversion-1
+APR_INCLUDE=/usr/include/apr-0
+LIBRARIES=/usr/lib
