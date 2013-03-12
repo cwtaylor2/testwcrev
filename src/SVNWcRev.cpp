@@ -36,11 +36,15 @@
 #include <sys/stat.h>
 #include <svn_dso.h>
 #include "SVNWcRev.h"
+#include <stddef.h>
 
 
-
-
-
+extern svn_error_t *svn_status (const char *path,
+                   void *status_baton,
+                   svn_boolean_t no_ignore,
+                   svn_client_ctx_t *ctx,
+                   apr_pool_t *pool);
+ 
 
 // Define the help text as a multi-line macro
 // Every line except the last must be terminated with a backslash

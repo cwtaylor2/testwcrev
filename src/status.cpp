@@ -16,66 +16,208 @@
 // You should have received a copy of the GNU General Public License
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-//#pragma once
-#include <vector>
 
 #include <apr_pools.h>
-#include "svn_error.h"
-#include "svn_client.h"
-#include "svn_path.h"
+#include <apr_lib.h>
+#include <svn_client.h>
+#include <svn_wc.h>
+#include <svn_path.h>
+#include <svn_utf.h>
+#include "SVNWcRev.h"
 
-
-#define URL_BUF	2048
-#define OWNER_BUF	2048
-#define COMMENT_BUF	4096
-#define MAX_PATH 512 // is this enough?
-
-/**
- * \ingroup SubWCRev
- * This structure is used as a part of the status baton for WC crawling
- * and contains all the information we are collecting regarding the lock status.
- */
-typedef struct SubWcLockData_t
+void getallstatus(void * baton, const char * path, svn_wc_status2_t * status)
 {
-	bool NeedsLocks;			// TRUE if a lock can be applied in generally; if FALSE, the values of the other parms in this struct are invalid
-	bool IsLocked;				// TRUE if the file or folder is locked
-	char Owner[OWNER_BUF];		// the username which owns the lock
-	char Comment[COMMENT_BUF];	// lock comment
-	apr_time_t CreationDate;    // when lock was made
-	
-} SubWcLockData_t;
+	SubWCRev_StatusBaton_t * sb = (SubWCRev_StatusBaton_t *) baton;
+	if ((status)&&(sb->SubStat->bExternals)&&(status->text_status == svn_wc_status_external))
+	{
+		const char * copypath = apr_pstrdup(sb->pool, path);
+		sb->extarray->push_back(copypath);
+	}
+	if ((status)&&(status->entry)&&(status->entry->uuid))
+	{
+		if (sb->SubStat->UUID[0] == 0)
+		{
+			strncpy(sb->SubStat->UUID, status->entry->uuid, MAX_PATH);
+		}
+		if (strncmp(sb->SubStat->UUID, status->entry->uuid, MAX_PATH) != 0)
+			return;
+		if ((status->entry->kind == svn_node_file)||(sb->SubStat->bFolders))
+		{
+			if (sb->SubStat->CmtRev < status->entry->cmt_rev)
+			{
+				sb->SubStat->CmtRev = status->entry->cmt_rev;
+				sb->SubStat->CmtDate = status->entry->cmt_date;
+			}
+		}
+		if (sb->SubStat->MaxRev < status->entry->revision)
+		{
+			sb->SubStat->MaxRev = status->entry->revision;
+		}
+		if (sb->SubStat->MinRev > status->entry->revision || sb->SubStat->MinRev == 0)
+		{
+			sb->SubStat->MinRev = status->entry->revision;
+		}
+		switch (status->text_status)
+		{
+		case svn_wc_status_external:
+		case svn_wc_status_none:
+		case svn_wc_status_unversioned:
+		case svn_wc_status_ignored:
+		case svn_wc_status_incomplete:
+		case svn_wc_status_normal:
+			break;
+		default:
+			sb->SubStat->HasMods = TRUE;
+			break;			
+		}
+		switch (status->prop_status)
+		{
+		case svn_wc_status_none:
+		case svn_wc_status_unversioned:
+		case svn_wc_status_ignored:
+		case svn_wc_status_external:
+		case svn_wc_status_incomplete:
+		case svn_wc_status_normal:
+			break;
+		default:
+			sb->SubStat->HasMods = TRUE;
+			break;			
+		}
+	}
+}
 
-// This structure is used as the status baton for WC crawling
-// and contains all the information we are collecting.
-typedef struct SubWCRev_t
+// Copy the URL from src to dest, unescaping on the fly.
+void UnescapeCopy(char * src, char * dest, int buf_len)
 {
-	svn_revnum_t MinRev;	// Lowest update revision found
-	svn_revnum_t MaxRev;	// Highest update revision found
-	svn_revnum_t CmtRev;	// Highest commit revision found
-	apr_time_t CmtDate;		// Date of highest commit revision
-	bool HasMods;			// True if local modifications found
-	bool bFolders;			// If TRUE, status of folders is included
-	bool bExternals;		// If TRUE, status of externals is included
-	bool bHexPlain;			// If TRUE, revision numbers are output in HEX
-	bool bHexX;				// If TRUE, revision numbers are output in HEX with '0x'
-	char Url[URL_BUF];		// URL of working copy
-	char UUID[1024];	// The repository UUID of the working copy
-	char Author[URL_BUF];	// The author of the wcPath
-	bool  bIsSvnItem;			// True if the item is under SVN
-	SubWcLockData_t LockData;	// Data regarding the lock of the file
-} SubWCRev_t;
+	char * pszSource = src;
+	char * pszDest = dest;
+	int len = 0;
 
-typedef struct SubWCRev_StatusBaton_t
-{
-	SubWCRev_t * SubStat;
-	std::vector<const char *> * extarray;
-	apr_pool_t *pool;
-} SubWCRev_StatusBaton_t;
+	// under VS.NET2k5 strchr() wants this to be a non-const array :/
+
+	static char szHex[] = "0123456789ABCDEF";
+
+	// Unescape special characters. The number of characters
+	// in the *pszDest is assumed to be <= the number of characters
+	// in pszSource (they are both the same string anyway)
+
+	while (*pszSource != '\0' && ++len < buf_len)
+	{
+		if (*pszSource == '%')
+		{
+			// The next two chars following '%' should be digits
+			if ( *(pszSource + 1) == '\0' ||
+				 *(pszSource + 2) == '\0' )
+			{
+				// nothing left to do
+				break;
+			}
+
+			char nValue = '?';
+			char * pszLow = NULL;
+			char * pszHigh = NULL;
+			pszSource++;
+
+			*pszSource = (char) toupper(*pszSource);
+			pszHigh = strchr(szHex, *pszSource);
+
+			if (pszHigh != NULL)
+			{
+				pszSource++;
+				*pszSource = (char) toupper(*pszSource);
+				pszLow = strchr(szHex, *pszSource);
+
+				if (pszLow != NULL)
+				{
+					nValue = (char) (((pszHigh - szHex) << 4) +
+									(pszLow - szHex));
+				}
+			} // if (pszHigh != NULL) 
+			*pszDest++ = nValue;
+		} 
+		else
+			*pszDest++ = *pszSource;
+			
+		pszSource++;
+	}
+
+	*pszDest = '\0';
+}
 
 svn_error_t *
-svn_status (       const char *path,
-                   void *status_baton,
-                   svn_boolean_t no_ignore,
-                   svn_client_ctx_t *ctx,
-                   apr_pool_t *pool);
+svn_status (	const char *path,
+				void *status_baton,
+				svn_boolean_t no_ignore,
+				svn_client_ctx_t *ctx,
+				apr_pool_t *pool)
+{
+	svn_wc_adm_access_t *adm_access;
+	svn_wc_traversal_info_t *traversal_info = svn_wc_init_traversal_info (pool);
+	const char *anchor, *target;
+	const svn_delta_editor_t *editor;
+	void *edit_baton;
+	const svn_wc_entry_t *entry;
+	svn_revnum_t edit_revision = SVN_INVALID_REVNUM;
+	SubWCRev_StatusBaton_t sb;
+	std::vector<const char *> * extarray = new std::vector<const char *>;
+	sb.SubStat = (SubWCRev_t *)status_baton;
+	sb.extarray = extarray;
+	sb.pool = pool;
+	svn_utf_initialize(pool);
+	
+  	// Need to lock the tree as even a non-recursive status requires the
+	// immediate directories to be locked.
+	SVN_ERR (svn_wc_adm_probe_open3 (&adm_access, NULL, path, FALSE, 0, NULL, NULL, pool));
+
+	// Get the entry for this path so we can determine our anchor and
+	// target.  If the path is unversioned, and the caller requested
+	// that we contact the repository, we error.
+	SVN_ERR (svn_wc_entry (&entry, path, adm_access, FALSE, pool));
+	if (entry)
+	{
+		SVN_ERR (svn_wc_get_actual_target (path, &anchor, &target, pool));
+		if (entry->url)
+		{
+			SubWCRev_t * SubStat = (SubWCRev_t *) status_baton;
+			UnescapeCopy((char *) entry->url, SubStat->Url, URL_BUF);
+		}
+	}
+	else
+	{
+		svn_path_split (path, &anchor, &target, pool);
+	}
+	
+
+	// Close up our ADM area.  We'll be re-opening soon.
+	SVN_ERR (svn_wc_adm_close (adm_access));
+
+	// Need to lock the tree as even a non-recursive status requires the
+	// immediate directories to be locked.
+	SVN_ERR (svn_wc_adm_probe_open3 (&adm_access, NULL, anchor, FALSE, -1, NULL, NULL, pool));
+	
+	// Get the status edit, and use our wrapping status function/baton
+	// as the callback pair.
+	SVN_ERR (svn_wc_get_status_editor2 (&editor, &edit_baton, NULL, &edit_revision,
+									   adm_access, target, ctx->config, TRUE,
+									   TRUE, no_ignore, getallstatus, &sb,
+									   ctx->cancel_func, ctx->cancel_baton,
+									   traversal_info, pool));
+	
+	SVN_ERR (editor->close_edit (edit_baton, pool));
+
+	SVN_ERR (svn_wc_adm_close (adm_access));
+	
+	// now crawl through all externals
+	for (std::vector<const char *>::iterator I = extarray->begin(); I != extarray->end(); ++I)
+	{
+		if (strcmp(path, *I))
+		{
+			svn_status (*I, sb.SubStat, no_ignore, ctx, pool);
+		}
+	}
+
+	delete extarray;
+
+	return SVN_NO_ERROR;
+}
 
