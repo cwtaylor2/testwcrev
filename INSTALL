@@ -17,7 +17,7 @@ Requirements:
 
 For obvious reasons you will need the headers of Subversion and APR,
 and their libraries to link the executable. I have tested this tool
-with Subversion 1.3.0, but it should work with all versions from
+with Subversion 1.7.0, but it should work with all versions from
 1.0 on with almost all up-to-date distributions. The APR version has
 to be the one that comes with the Subversion sources.
 
