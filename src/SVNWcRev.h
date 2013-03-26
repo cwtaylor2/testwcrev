@@ -49,29 +49,54 @@ typedef struct SubWcLockData_t
 // and contains all the information we are collecting.
 typedef struct SubWCRev_t
 {
-	svn_revnum_t MinRev;	// Lowest update revision found
-	svn_revnum_t MaxRev;	// Highest update revision found
-	svn_revnum_t CmtRev;	// Highest commit revision found
-	apr_time_t CmtDate;		// Date of highest commit revision
-	bool HasMods;			// True if local modifications found
-	bool bFolders;			// If TRUE, status of folders is included
-	bool bExternals;		// If TRUE, status of externals is included
-	bool bHexPlain;			// If TRUE, revision numbers are output in HEX
-	bool bHexX;				// If TRUE, revision numbers are output in HEX with '0x'
-	char Url[URL_BUF];		// URL of working copy
-	char UUID[1024];	// The repository UUID of the working copy
-	char Author[URL_BUF];	// The author of the wcPath
-	bool  bIsSvnItem;			// True if the item is under SVN
-	SubWcLockData_t LockData;	// Data regarding the lock of the file
+    svn_revnum_t MinRev;    // Lowest update revision found
+    svn_revnum_t MaxRev;    // Highest update revision found
+    svn_revnum_t CmtRev;    // Highest commit revision found
+    apr_time_t CmtDate;     // Date of highest commit revision
+    bool HasMods;           // True if local modifications found
+    bool HasUnversioned;    // True if unversioned items found
+    bool bFolders;          // If TRUE, status of folders is included
+    bool bExternals;        // If TRUE, status of externals is included
+    bool bExternalsNoMixedRevision; // If TRUE, externals set to an explicit revision lead not to an mixed revsion error
+    bool bHexPlain;         // If TRUE, revision numbers are output in HEX
+    bool bHexX;             // If TRUE, revision numbers are output in HEX with '0x'
+    char Url[URL_BUF];      // URL of working copy
+    char RootUrl[URL_BUF];  // url of the repository root
+    char Author[URL_BUF];   // The author of the wcPath
+    bool bIsSvnItem;           // True if the item is under SVN
+    SubWcLockData_t LockData;   // Data regarding the lock of the file
+    bool  bIsExternalsNotFixed; // True if one external is not fixed to a specified revision
+    bool  bIsExternalMixed; // True if one external, which is fixed has not the explicit revsion set
+    bool  bIsTagged;   // True if working copy URL contains "tags" keyword
 } SubWCRev_t;
 
+/**
+ * \ingroup SubWCRev
+ * This structure is used as a part of the status baton for crawling externals
+ * and contains the information about the externals path and revision status.
+ */
+typedef struct SubWcExtData_t
+{
+    const char * Path;            // The name of the directory (abosulte path) into which this external should be checked out
+    svn_opt_revision_t Revision;  // What revision to check out.
+} SubWcExtData_t;
+
+/**
+ * \ingroup SubWCRev
+ * Collects all the SubWCRev_t structures in an array.
+ */
 typedef struct SubWCRev_StatusBaton_t
 {
-	SubWCRev_t * SubStat;
-	std::vector<const char *> * extarray;
-	apr_pool_t *pool;
+    SubWCRev_t * SubStat;
+    std::vector<SubWcExtData_t> * extarray;
+    apr_pool_t *pool;
+    svn_wc_context_t * wc_ctx;
 } SubWCRev_StatusBaton_t;
 
+/**
+ * \ingroup SubWCRev
+ * Callback function when fetching the Subversion status
+ */
 svn_error_t *
 svn_status (       const char *path,
                    void *status_baton,

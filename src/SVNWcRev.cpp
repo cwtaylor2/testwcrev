@@ -151,7 +151,7 @@ $WCISLOCKED$    True if the item is locked\n"
 #define ERR_NOWC       10   // the path is not a working copy or part of one
 
 // Value for apr_time_t to signify "now"
-#define USE_TIME_NOW    -2  // 0 and -1 might already be significant.
+#define USE_TIME_NOW    -2 // 0 and -1 might already be significant.
 
 
 
@@ -427,9 +427,14 @@ int main(int argc, char** argv){
 		return ERR_SYNTAX;
 	}
 
+	char *fullpath = realpath (wc, NULL);
+	if (fullpath)
+		wc = fullpath;
+
 	if (access(wc, R_OK) != 0)
 	{
 		printf("Directory or file '%s' does not exist\n", wc);
+		free (fullpath);
 		return ERR_FNF;			// dir does not exist
 	}
 	char * pBuf = NULL;
@@ -491,34 +496,31 @@ int main(int argc, char** argv){
 	const char * internalpath;	
 
 	apr_initialize();
+	svn_dso_initialize2();
 	apr_pool_create_ex(&pool, NULL, abort_on_pool_failure, NULL);
-
 	svn_client_create_context(&ctx, pool);
-	
-// This only works with SVN headers of version 1.3.x or above
-#if SVN_VER_MINOR > 2
+
 	if (getenv ("SVN_ASP_DOT_NET_HACK"))
 	{
 		svn_wc_set_adm_dir ("_svn", pool);
 	}
-#endif
 
 	const char* utf8Path = new char[MAX_PATH];
  	svn_utf_cstring_to_utf8(&utf8Path, wc, pool);
-	internalpath = svn_path_internal_style (utf8Path, pool);
+	free (fullpath);
+	internalpath = svn_dirent_internal_style (utf8Path, pool);
 
 	svnerr = svn_status(	internalpath,	//path
 							&SubStat,		//status_baton
 							TRUE,			//noignore
 							ctx,
 							pool);
-
 	if (svnerr){
 		svn_handle_error2(svnerr, stderr, FALSE, "svnwcrev : ");
 	}
 	apr_pool_destroy(pool);
 	apr_terminate2();
-	
+
 	if (bErrOnMods && SubStat.HasMods)
 	{
 		printf("Working copy has local modifications!\n");
